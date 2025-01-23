@@ -1,89 +1,68 @@
 #include <Arduino.h>
-#include <PubSubClient.h>
 #include <UltrasonicLevelSensor.hpp>
 #include <LevelLedIndicator.hpp>
 #include <WiFiManager.hpp>
+#include <MqttManager.hpp>
+#include <ValveControl.hpp>
 
-#define pinvalve 15
-#define mqttserver "192.168.0.192"
-#define mqttport 1883
-#define mqttuser "wh"
-#define mqttpasswd "Inter"
-
-WiFiClient espClient;
-PubSubClient client(espClient);
-WiFiManager wifiManager;
+MqttManager mqttManager;
 UltrasonicLevelSensor levelSensor;
 LevelLedIndicator levelIndicator;
-float lastLevelPercentage = -1.0;
+ValveControl valveControl;
 
-void mqttConnect()
+float lastLevelPercentage = -1.0;
+unsigned long lastUpdateTime = 0;
+
+void mqttCallback(char *topic, byte *payload, unsigned int length)
 {
-  client.setServer(mqttserver, mqttport);
-  while (!client.connected())
-  {
-    Serial.print("Conectando ao MQTT...");
-    if (client.connect("tank_module", mqttuser, mqttpasswd))
-    {
-      Serial.println("Conectado!");
-    }
-    else
-    {
-      Serial.print("Falha na conexão, código: ");
-      Serial.println(client.state());
-      delay(2000);
-    }
-  }
+  valveControl.valveCallback(topic, payload, length);
 }
 
 void setup()
 {
   Serial.begin(115200);
+  WiFiManager wifiManager;
   wifiManager.begin();
+
   levelSensor.begin();
   levelIndicator.begin();
-  pinMode(pinvalve, OUTPUT);
-  digitalWrite(pinvalve, HIGH);
-  mqttConnect();
+  valveControl.begin();
+
+  mqttManager.setCallback(mqttCallback);
+
+  mqttManager.begin();
 }
 
 void loop()
 {
-  if (!client.connected())
+  if (!mqttManager.isConnected())
   {
     Serial.print("MQTT desconectado. Código de estado: ");
-    Serial.println(client.state());
-    mqttConnect();
+    Serial.println(mqttManager.getState());
+    mqttManager.begin();
   }
-  client.loop();
+  mqttManager.loop();
 
-  float levelPercentage = levelSensor.getFillPercentage();
-
-  if (abs(levelPercentage - lastLevelPercentage) >= 0.2)
+  unsigned long currentMillis = millis();
+  if (currentMillis - lastUpdateTime >= 500)
   {
-    Serial.print("Percentual de preenchimento: ");
-    Serial.print(levelPercentage);
-    Serial.println(" %");
+    lastUpdateTime = currentMillis;
 
-    levelIndicator.update(levelPercentage);
+    float levelPercentage = levelSensor.getFillPercentage();
 
-    if (levelPercentage < 70)
+    if (abs(levelPercentage - lastLevelPercentage) >= 0.2)
     {
-      Serial.println("Ligando o relé (válvula aberta)...");
-      digitalWrite(pinvalve, LOW);
-    }
-    else
-    {
-      Serial.println("Desligando o relé (válvula fechada)...");
-      digitalWrite(pinvalve, HIGH);
-    }
+      Serial.print("Percentual de preenchimento: ");
+      Serial.print(levelPercentage);
+      Serial.println(" %");
 
-    char payload[10];
-    dtostrf(levelPercentage, 1, 1, payload);
+      levelIndicator.update(levelPercentage);
 
-    client.publish("tank/1/level", payload);
-    lastLevelPercentage = levelPercentage;
+      char payload[10];
+      dtostrf(levelPercentage, 1, 1, payload);
+
+      mqttManager.publishMessage("tank/1/level", payload);
+      lastLevelPercentage = levelPercentage;
+    }
   }
-
-  delay(500);
 }

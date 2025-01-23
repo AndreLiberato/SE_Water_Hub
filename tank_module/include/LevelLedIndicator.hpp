@@ -5,9 +5,9 @@
 
 class LevelLedIndicator {
 private:
-    static constexpr int lowLevelLedPin = 21;    // Pino do LED de nível baixo
-    static constexpr int midLevelLedPin = 22;    // Pino do LED de nível médio
-    static constexpr int highLevelLedPin = 23;   // Pino do LED de nível alto
+    static constexpr u_int8_t lowLevelLedPin = 21;    // Pino do LED de nível baixo
+    static constexpr u_int8_t midLevelLedPin = 22;    // Pino do LED de nível médio
+    static constexpr u_int8_t highLevelLedPin = 23;   // Pino do LED de nível alto
 
     void turnOffAll();  // Desliga todos os LEDs
 public:
